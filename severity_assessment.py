@@ -1,25 +1,14 @@
-from transformers import pipeline, AutoTokenizer, AutoModelForCausalLM, set_seed
-import torch
 import json
 import re
-import pandas as pd
 import os
+from huggingface_hub import InferenceClient
 
-set_seed(0)
-
-# Load tokenizer and model (adjust path or model name as needed)
-model_name = "meta-llama/Llama-3.1-8B-Instruct"  # or your local model path
-tokenizer = AutoTokenizer.from_pretrained(model_name)
-
-model = AutoModelForCausalLM.from_pretrained(model_name, torch_dtype="auto", device_map="auto")
-
-# Create pipeline
-llm = pipeline("text-generation", model=model, tokenizer=tokenizer)
-
+# Initialize the client (ensure HF_TOKEN is set in your environment variables)
+# You can also pass token="hf_..." directly here if testing locally
+client = InferenceClient(token=os.environ.get("HF_TOKEN"))
 
 # Required JSON keys
 TEMPLATE_KEYS = ["Q1", "Q2", "Q3", "Q4", "Q5", "Q6", "severity"]
-
 
 def validate_json(data):
     """Check if all required keys exist and are non-empty/valid."""
@@ -34,9 +23,7 @@ def validate_json(data):
         return False
     return True
 
-
 def get_assessment(post):
-
     p = ("\n Evaluate this post step by step and assign them severity on a scale of 0-6, "
          "where 0 means the post is not related to suicide, "
          "and 1-6 depending on the metrics above where 1 is for the first question and 6 for the last. \n")
@@ -52,7 +39,6 @@ def get_assessment(post):
     r = (
         "\n\n"
         "Respond with ONLY the completed JSON object in the following template:\n\n"
-
         "{"
         "\n  \"Q1\": \"Reasoning that fulfills this criteria or \\\"N/A\\\"\","
         "\n  \"Q2\": \"Reasoning that fulfills this criteria or \\\"N/A\\\"\","
@@ -62,33 +48,35 @@ def get_assessment(post):
         "\n  \"Q6\": \"Reasoning that fulfills this criteria or \\\"N/A\\\"\","
         "\n  \"severity\": integer (0-6)"
         "\n}\n"
-
         "---\n"
     )
 
-
     full_prompt = p + '\n' + q + '\n' + r + '\n\n post: ' + post + '\n---\n'
-
-    output = llm(full_prompt, max_new_tokens=512)[0]['generated_text']
-
-    matches = re.findall(r"\{(?:[^{}]|\n)*?\}", output, re.DOTALL)
-    for m in matches:
-        try:
-            return json.loads(m)
-        except Exception:
-            continue
-    return None
-
+    
+    try:
+        # Call API
+        response = client.text_generation(
+            full_prompt, 
+            model="meta-llama/Llama-3.1-8B-Instruct", 
+            max_new_tokens=512
+        )
+        # Extract JSON from response
+        matches = re.findall(r"\{(?:[^{}]|\n)*?\}", response, re.DOTALL)
+        if matches:
+            return json.loads(matches[0])
+        return None
+    except Exception as e:
+        print(f"Error: {e}")
+        return None
 
 # Load dataset
-dataset_df = pd.read_csv("c-ssrs.csv")
-posts = dataset_df["content"].tolist()
-post_ids = dataset_df["id"].tolist()
+posts = ["I don't know what to do anymore, I just feel empty and hopeless I feel alone while I'm not really alone, I feel humiliated while no one humiliates me, I'm getting sick of this world day by day, even though this world hasn't really been bad for me. I got into this boring cycle, a cycle that may be normal and not that terrible, but it's definitely boring because there's nothing special about it except for the absurdity and emptiness. Pray for me so that I can escape from this cycle, whether the way to escape is life or death."]
+post_ids = [0] # Created dummy ID to match the single post above
 
-filename = f"output.jsonl"
+filename = "output.jsonl" # Simplified path for testing
 failed_filename = filename.replace(".jsonl", "_failed.jsonl")
 
-os.makedirs(os.path.dirname(filename), exist_ok=True)
+os.makedirs(os.path.dirname(os.path.abspath(filename)), exist_ok=True)
 
 with open(filename, "w") as f, open(failed_filename, "w") as f_failed:
     for i, post in enumerate(posts):
@@ -105,11 +93,11 @@ with open(filename, "w") as f, open(failed_filename, "w") as f_failed:
                 retries += 1
                 print(f"[Retry {retries}] post_index: {post_ids[i]} - invalid response")
 
-        if data:  # valid → save
+        if data:  # valid -> save
             data["post_index"] = post_ids[i]
             f.write(json.dumps(data) + "\n")
             f.flush()
-        else:  # failed after max retries → log separately
+        else:  # failed after max retries -> log separately
             fail_entry = {
                 "post_index": post_ids[i],
                 "content": post,
