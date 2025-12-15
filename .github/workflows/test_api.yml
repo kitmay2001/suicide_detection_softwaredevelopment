@@ -11,3 +11,7 @@ jobs:
         env:
           HF_TOKEN: ${{ secrets.HF_TOKEN }}
         run: python inference_test.py
+      - name: Run Main Inference Script
+        env:
+          HF_TOKEN: ${{ secrets.HF_TOKEN }}
+        run: python severity_assessment.py
