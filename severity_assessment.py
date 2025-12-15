@@ -4,7 +4,6 @@ import os
 from huggingface_hub import InferenceClient
 
 # Initialize the client (ensure HF_TOKEN is set in your environment variables)
-# You can also pass token="hf_..." directly here if testing locally
 client = InferenceClient(token=os.environ.get("HF_TOKEN"))
 
 # Required JSON keys
@@ -51,29 +50,32 @@ def get_assessment(post):
         "---\n"
     )
 
+    # 1. FIX: Ensure variable name matches below
     full_prompt = p + '\n' + q + '\n' + r + '\n\n post: ' + post + '\n---\n'
     
+    # 2. FIX: Indentation fixed here
+    messages = [
+        {"role": "user", "content": full_prompt}  # Changed full_prompt_text -> full_prompt
+    ]
+    
     try:
-        # Call API
-        response = client.text_generation(
-            full_prompt, 
+        response = client.chat_completion(
+            messages=messages,
             model="meta-llama/Llama-3.1-8B-Instruct", 
-            max_new_tokens=512
+            max_tokens=512
         )
-        # Extract JSON from response
-        matches = re.findall(r"\{(?:[^{}]|\n)*?\}", response, re.DOTALL)
-        if matches:
-            return json.loads(matches[0])
-        return None
+        # Parse the JSON from the 'content' string
+        content = response.choices[0].message.content
+        return json.loads(re.findall(r"\{(?:[^{}]|\n)*?\}", content, re.DOTALL)[0])
     except Exception as e:
         print(f"Error: {e}")
         return None
 
 # Load dataset
 posts = ["I don't know what to do anymore, I just feel empty and hopeless I feel alone while I'm not really alone, I feel humiliated while no one humiliates me, I'm getting sick of this world day by day, even though this world hasn't really been bad for me. I got into this boring cycle, a cycle that may be normal and not that terrible, but it's definitely boring because there's nothing special about it except for the absurdity and emptiness. Pray for me so that I can escape from this cycle, whether the way to escape is life or death."]
-post_ids = [0] # Created dummy ID to match the single post above
+post_ids = [0] 
 
-filename = "output.jsonl" # Simplified path for testing
+filename = "output.jsonl" 
 failed_filename = filename.replace(".jsonl", "_failed.jsonl")
 
 os.makedirs(os.path.dirname(os.path.abspath(filename)), exist_ok=True)
