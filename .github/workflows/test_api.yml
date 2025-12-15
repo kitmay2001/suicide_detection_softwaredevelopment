@@ -1,0 +1,13 @@
+name: API Latency Check
+on: [push]
+jobs:
+  check-api:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+      - name: Install dependencies
+        run: pip install huggingface_hub
+      - name: Run Latency Test
+        env:
+          HF_TOKEN: ${{ secrets.HF_TOKEN }}
+        run: python inference_test.py
