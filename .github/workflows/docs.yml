@@ -33,7 +33,7 @@ jobs:
         run: |
           # Generate HTML docs for your script (e.g., inference.py)
           # -o docs/ tells it to save the HTML in a folder named 'docs'
-          pdoc inference.py -o docs/
+          pdoc severity_assessment.py -o docs/
 
       - name: Deploy to GitHub Pages
         uses: peaceiris/actions-gh-pages@v3
